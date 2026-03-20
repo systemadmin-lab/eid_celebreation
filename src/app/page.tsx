@@ -2,7 +2,7 @@ import ThreeScene from "@/components/ThreeScene";
 
 export default function Home() {
   return (
-    <main className="scene-container bg-black">
+    <main className="relative w-full h-screen overflow-hidden bg-black">
       <ThreeScene />
     </main>
   );

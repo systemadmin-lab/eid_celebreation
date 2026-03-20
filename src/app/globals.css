@@ -21,35 +21,7 @@
 html, body {
   overflow: hidden;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   background: var(--background);
   color: var(--foreground);
-  -webkit-overflow-scrolling: touch;
-  touch-action: none;
-  overscroll-behavior: none;
-}
-
-/* Prevent iOS rubber-banding and pull-to-refresh */
-html {
-  position: fixed;
-  inset: 0;
-}
-
-/* Canvas responsiveness */
-canvas {
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
-  touch-action: none;
-}
-
-/* Ensure main container fills viewport on all devices */
-.scene-container {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
 }
