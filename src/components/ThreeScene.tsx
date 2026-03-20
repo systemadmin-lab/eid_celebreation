@@ -2,194 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-
-const vertexShader = /* glsl */ `
-  void main() {
-    gl_Position = vec4(position, 1.0);
-  }
-`;
-
-const fragmentShader = /* glsl */ `
-  uniform float iGlobalTime;
-  uniform vec2 iResolution;
-
-  const int NUM_STEPS = 8;
-  const float PI = 3.1415;
-  const float EPSILON = 1e-3;
-  #define EPSILON_NRM (0.1 / iResolution.x)
-
-  const int ITER_GEOMETRY = 3;
-  const int ITER_FRAGMENT = 5;
-  const float SEA_HEIGHT = 0.6;
-  const float SEA_CHOPPY = 1.0;
-  const float SEA_SPEED = 1.0;
-  const float SEA_FREQ = 0.16;
-  const vec3 SEA_BASE = vec3(0.1, 0.19, 0.22);
-  const vec3 SEA_WATER_COLOR = vec3(0.8, 0.9, 0.6);
-  #define SEA_TIME (iGlobalTime * SEA_SPEED)
-  mat2 octave_m = mat2(1.6, 1.2, -1.2, 1.6);
-
-  mat3 fromEuler(vec3 ang) {
-    vec2 a1 = vec2(sin(ang.x), cos(ang.x));
-    vec2 a2 = vec2(sin(ang.y), cos(ang.y));
-    vec2 a3 = vec2(sin(ang.z), cos(ang.z));
-    mat3 m;
-    m[0] = vec3(a1.y*a3.y+a1.x*a2.x*a3.x, a1.y*a2.x*a3.x+a3.y*a1.x, -a2.y*a3.x);
-    m[1] = vec3(-a2.y*a1.x, a1.y*a2.y, a2.x);
-    m[2] = vec3(a3.y*a1.x*a2.x+a1.y*a3.x, a1.x*a3.x-a1.y*a3.y*a2.x, a2.y*a3.y);
-    return m;
-  }
-
-  float hash(vec2 p) {
-    float h = dot(p, vec2(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
-  }
-
-  float noise(in vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return -1.0 + 2.0 * mix(
-      mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-      u.y
-    );
-  }
-
-  float diffuse(vec3 n, vec3 l, float p) {
-    return pow(dot(n, l) * 0.4 + 0.6, p);
-  }
-
-  float specular(vec3 n, vec3 l, vec3 e, float s) {
-    float nrm = (s + 8.0) / (3.1415 * 8.0);
-    return pow(max(dot(reflect(e, n), l), 0.0), s) * nrm;
-  }
-
-  vec3 getSkyColor(vec3 e) {
-    e.y = max(e.y, 0.0);
-    vec3 ret;
-    ret.x = pow(1.0 - e.y, 2.0);
-    ret.y = 1.0 - e.y;
-    ret.z = 0.6 + (1.0 - e.y) * 0.4;
-    return ret;
-  }
-
-  float sea_octave(vec2 uv, float choppy) {
-    uv += noise(uv);
-    vec2 wv = 1.0 - abs(sin(uv));
-    vec2 swv = abs(cos(uv));
-    wv = mix(wv, swv, wv);
-    return pow(1.0 - pow(wv.x * wv.y, 0.65), choppy);
-  }
-
-  float map(vec3 p) {
-    float freq = SEA_FREQ;
-    float amp = SEA_HEIGHT;
-    float choppy = SEA_CHOPPY;
-    vec2 uv = p.xz;
-    uv.x *= 0.75;
-    float d, h = 0.0;
-    for(int i = 0; i < ITER_GEOMETRY; i++) {
-      d = sea_octave((uv + SEA_TIME) * freq, choppy);
-      d += sea_octave((uv - SEA_TIME) * freq, choppy);
-      h += d * amp;
-      uv *= octave_m;
-      freq *= 1.9;
-      amp *= 0.22;
-      choppy = mix(choppy, 1.0, 0.2);
-    }
-    return p.y - h;
-  }
-
-  float map_detailed(vec3 p) {
-    float freq = SEA_FREQ;
-    float amp = SEA_HEIGHT;
-    float choppy = SEA_CHOPPY;
-    vec2 uv = p.xz;
-    uv.x *= 0.75;
-    float d, h = 0.0;
-    for(int i = 0; i < ITER_FRAGMENT; i++) {
-      d = sea_octave((uv + SEA_TIME) * freq, choppy);
-      d += sea_octave((uv - SEA_TIME) * freq, choppy);
-      h += d * amp;
-      uv *= octave_m;
-      freq *= 1.9;
-      amp *= 0.22;
-      choppy = mix(choppy, 1.0, 0.2);
-    }
-    return p.y - h;
-  }
-
-  vec3 getSeaColor(vec3 p, vec3 n, vec3 l, vec3 eye, vec3 dist) {
-    float fresnel = 1.0 - max(dot(n, -eye), 0.0);
-    fresnel = pow(fresnel, 3.0) * 0.65;
-    vec3 reflected = getSkyColor(reflect(eye, n));
-    vec3 refracted = SEA_BASE + diffuse(n, l, 80.0) * SEA_WATER_COLOR * 0.12;
-    vec3 color = mix(refracted, reflected, fresnel);
-    float atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
-    color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.18 * atten;
-    color += vec3(specular(n, l, eye, 60.0));
-    return color;
-  }
-
-  vec3 getNormal(vec3 p, float eps) {
-    vec3 n;
-    n.y = map_detailed(p);
-    n.x = map_detailed(vec3(p.x + eps, p.y, p.z)) - n.y;
-    n.z = map_detailed(vec3(p.x, p.y, p.z + eps)) - n.y;
-    n.y = eps;
-    return normalize(n);
-  }
-
-  float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {
-    float tm = 0.0;
-    float tx = 1000.0;
-    float hx = map(ori + dir * tx);
-    if(hx > 0.0) return tx;
-    float hm = map(ori + dir * tm);
-    float tmid = 0.0;
-    for(int i = 0; i < NUM_STEPS; i++) {
-      tmid = mix(tm, tx, hm / (hm - hx));
-      p = ori + dir * tmid;
-      float hmid = map(p);
-      if(hmid < 0.0) {
-        tx = tmid;
-        hx = hmid;
-      } else {
-        tm = tmid;
-        hm = hmid;
-      }
-    }
-    return tmid;
-  }
-
-  void main() {
-    vec2 uv = gl_FragCoord.xy / iResolution.xy;
-    uv = uv * 2.0 - 1.0;
-    uv.x *= iResolution.x / iResolution.y;
-    float time = iGlobalTime * 0.3;
-
-    vec3 ang = vec3(sin(time * 3.0) * 0.1, sin(time) * 0.2 + 0.3, time);
-    vec3 ori = vec3(0.0, 3.5, time * 5.0);
-    vec3 dir = normalize(vec3(uv.xy, -2.0));
-    dir.z += length(uv) * 0.15;
-    dir = normalize(dir);
-
-    vec3 p;
-    heightMapTracing(ori, dir, p);
-    vec3 dist = p - ori;
-    vec3 n = getNormal(p, dot(dist, dist) * EPSILON_NRM);
-    vec3 light = normalize(vec3(0.0, 1.0, 0.8));
-
-    vec3 color = mix(
-      getSkyColor(dir),
-      getSeaColor(p, n, light, dir, dist),
-      pow(smoothstep(0.0, -0.05, dir.y), 0.3)
-    );
-
-    gl_FragColor = vec4(pow(color, vec3(0.75)), 1.0);
-  }
-`;
+import { Water } from "three/examples/jsm/objects/Water.js";
+import { Sky } from "three/examples/jsm/objects/Sky.js";
 
 export default function ThreeScene() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -198,56 +12,278 @@ export default function ThreeScene() {
     if (!containerRef.current) return;
     const container = containerRef.current;
 
-    // Full-screen shader setup: orthographic camera + 2x2 plane = fills clip space
-    const scene = new THREE.Scene();
-    const camera = new THREE.Camera(); // raw Camera has identity matrices — perfect for clip-space quad
-
-    const clock = new THREE.Clock();
-    const uniforms = {
-      iGlobalTime: { value: 0.1 },
-      iResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-    };
-
-    const material = new THREE.ShaderMaterial({
-      uniforms,
-      vertexShader,
-      fragmentShader,
-    });
-
-    // 2x2 plane: vertex positions go from -1 to 1, which is exactly clip space
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
-    scene.add(mesh);
-
-    const renderer = new THREE.WebGLRenderer();
+    /* ───────── renderer ───────── */
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.15;          // very dark — night
     container.appendChild(renderer.domElement);
 
+    /* ───────── scene & fog ───────── */
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020510); // deep night blue-black
+    scene.fog = new THREE.FogExp2(0x020510, 0.00035);
+
+    /* ───────── camera ───────── */
+    const camera = new THREE.PerspectiveCamera(
+      55,
+      window.innerWidth / window.innerHeight,
+      1,
+      20000
+    );
+    camera.position.set(0, 30, 150);
+    camera.lookAt(0, 0, 0);
+
+    /* ═══════════════════════════════════════
+       1. STARFIELD
+    ═══════════════════════════════════════ */
+    const starCount = 6000;
+    const starPos = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    const starSizes = new Float32Array(starCount);
+    for (let i = 0; i < starCount; i++) {
+      const i3 = i * 3;
+      // hemisphere above the camera
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI * 0.48; // stay above horizon
+      const r = 4000 + Math.random() * 4000;
+      starPos[i3]     = r * Math.sin(phi) * Math.cos(theta);
+      starPos[i3 + 1] = r * Math.cos(phi) + 50;          // push up
+      starPos[i3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+      // slight blue-white tint variation
+      const tint = 0.85 + Math.random() * 0.15;
+      starColors[i3]     = tint;
+      starColors[i3 + 1] = tint;
+      starColors[i3 + 2] = 0.9 + Math.random() * 0.1; // slightly bluer
+      starSizes[i] = 0.5 + Math.random() * 2.0;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
+    starGeo.setAttribute("size", new THREE.BufferAttribute(starSizes, 1));
+
+    const starMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+      },
+      vertexShader: /* glsl */ `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        uniform float uTime;
+        void main() {
+          vColor = color;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          // twinkle: vary size over time per star
+          float twinkle = 0.7 + 0.3 * sin(uTime * 1.5 + position.x * 0.01 + position.z * 0.01);
+          gl_PointSize = size * twinkle * (200.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec3 vColor;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5));
+          if (d > 0.5) discard;
+          float alpha = 1.0 - smoothstep(0.0, 0.5, d);
+          gl_FragColor = vec4(vColor, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexColors: true,
+    });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+
+    /* ═══════════════════════════════════════
+       2. CRESCENT MOON (2 % illumination)
+    ═══════════════════════════════════════ */
+    const moonGroup = new THREE.Group();
+
+    // dark sphere — the moon body
+    const moonGeo = new THREE.SphereGeometry(30, 64, 64);
+    const moonMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uLightDir: { value: new THREE.Vector3(-1, 0.2, 0.5).normalize() },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vPosition = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uLightDir;
+        varying vec3 vNormal;
+        void main() {
+          float NdotL = dot(vNormal, uLightDir);
+          // very thin crescent: only light the extreme edge
+          float crescent = smoothstep(-0.02, 0.04, NdotL);
+          vec3 dark  = vec3(0.02, 0.02, 0.04);      // dark side
+          vec3 lit   = vec3(0.95, 0.92, 0.82);       // warm moonlight
+          vec3 color = mix(dark, lit, crescent);
+          // soft glow at edge
+          float rim = pow(1.0 - max(dot(vNormal, vec3(0.0, 0.0, 1.0)), 0.0), 3.0);
+          color += vec3(0.08, 0.08, 0.14) * rim;
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+    });
+    const moon = new THREE.Mesh(moonGeo, moonMat);
+    moonGroup.add(moon);
+
+    // outer glow sprite
+    const glowCanvas = document.createElement("canvas");
+    glowCanvas.width = 256;
+    glowCanvas.height = 256;
+    const gctx = glowCanvas.getContext("2d")!;
+    const grad = gctx.createRadialGradient(128, 128, 20, 128, 128, 128);
+    grad.addColorStop(0, "rgba(180,190,220,0.25)");
+    grad.addColorStop(0.4, "rgba(120,130,170,0.08)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    gctx.fillStyle = grad;
+    gctx.fillRect(0, 0, 256, 256);
+    const glowTex = new THREE.CanvasTexture(glowCanvas);
+    const glowMat = new THREE.SpriteMaterial({
+      map: glowTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const glowSprite = new THREE.Sprite(glowMat);
+    glowSprite.scale.set(200, 200, 1);
+    moonGroup.add(glowSprite);
+
+    moonGroup.position.set(-600, 800, -2000);
+    scene.add(moonGroup);
+
+    /* ═══════════════════════════════════════
+       3. WATER SURFACE
+    ═══════════════════════════════════════ */
+    // procedural water-normals texture
+    const normSize = 512;
+    const normCanvas = document.createElement("canvas");
+    normCanvas.width = normSize;
+    normCanvas.height = normSize;
+    const nctx = normCanvas.getContext("2d")!;
+    const normImgData = nctx.createImageData(normSize, normSize);
+    for (let y = 0; y < normSize; y++) {
+      for (let x = 0; x < normSize; x++) {
+        const idx = (y * normSize + x) * 4;
+        // simple Perlin-ish ripple normal map
+        const nx = Math.sin(x * 0.05) * Math.cos(y * 0.08) * 0.5 + 0.5;
+        const ny = Math.cos(x * 0.07) * Math.sin(y * 0.06) * 0.5 + 0.5;
+        normImgData.data[idx]     = nx * 255;
+        normImgData.data[idx + 1] = ny * 255;
+        normImgData.data[idx + 2] = 200;       // z points mostly up
+        normImgData.data[idx + 3] = 255;
+      }
+    }
+    nctx.putImageData(normImgData, 0, 0);
+    const waterNormals = new THREE.CanvasTexture(normCanvas);
+    waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+
+    const waterGeo = new THREE.PlaneGeometry(10000, 10000);
+    const water = new Water(waterGeo, {
+      textureWidth: 512,
+      textureHeight: 512,
+      waterNormals: waterNormals,
+      sunDirection: new THREE.Vector3(-0.5, 0.3, -0.5),
+      sunColor: 0x101830,
+      waterColor: 0x020510,
+      distortionScale: 3.7,
+      fog: scene.fog !== undefined,
+    });
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = -5;
+    scene.add(water);
+
+    /* ═══════════════════════════════════════
+       4. LIGHTING & ATMOSPHERE
+    ═══════════════════════════════════════ */
+    // very dim ambient
+    const ambient = new THREE.AmbientLight(0x0a0a20, 0.15);
+    scene.add(ambient);
+
+    // moonlight
+    const moonLight = new THREE.DirectionalLight(0x8090b0, 0.35);
+    moonLight.position.set(-600, 800, -2000);
+    moonLight.target.position.set(0, 0, 0);
+    scene.add(moonLight);
+    scene.add(moonLight.target);
+
+    // subtle hemisphere fill
+    const hemiLight = new THREE.HemisphereLight(0x0a0a30, 0x000000, 0.08);
+    scene.add(hemiLight);
+
+    /* ───────── animation ───────── */
+    const clock = new THREE.Clock();
     let frameId: number;
+
+    // gentle camera motion
+    const cameraRadius = 150;
+    let cameraAngle = 0;
+
     const animate = () => {
-      uniforms.iGlobalTime.value += clock.getDelta();
+      const dt = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
+
+      // twinkle stars
+      starMat.uniforms.uTime.value = elapsed;
+
+      // animate water
+      (water.material as THREE.ShaderMaterial).uniforms["time"].value += dt * 0.5;
+
+      // slow camera orbit
+      cameraAngle += dt * 0.03;
+      camera.position.x = Math.sin(cameraAngle) * cameraRadius;
+      camera.position.z = Math.cos(cameraAngle) * cameraRadius;
+      camera.position.y = 25 + Math.sin(elapsed * 0.15) * 5;
+      camera.lookAt(0, 5, 0);
+
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
     };
     animate();
 
+    /* ───────── resize ───────── */
     const onResize = () => {
-      uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", onResize);
 
+    /* ───────── cleanup ───────── */
     return () => {
       window.removeEventListener("resize", onResize);
       cancelAnimationFrame(frameId);
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
-      mesh.geometry.dispose();
-      material.dispose();
+      starGeo.dispose();
+      starMat.dispose();
+      moonGeo.dispose();
+      moonMat.dispose();
+      glowTex.dispose();
+      glowMat.dispose();
+      waterGeo.dispose();
+      water.material.dispose();
       renderer.dispose();
     };
   }, []);
 
-  return <div ref={containerRef} style={{ width: "100vw", height: "100vh", overflow: "hidden" }} />;
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#020510" }}
+    />
+  );
 }
