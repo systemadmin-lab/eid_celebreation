@@ -319,13 +319,19 @@ export default function ThreeScene() {
     if (!containerRef.current) return;
     const container = containerRef.current;
 
+    const getSize = () => ({
+      width: container.clientWidth || window.innerWidth,
+      height: container.clientHeight || window.innerHeight,
+    });
+
     const scene = new THREE.Scene();
     const camera = new THREE.Camera();
 
     const clock = new THREE.Clock();
+    const { width, height } = getSize();
     const uniforms = {
       iGlobalTime: { value: 0.1 },
-      iResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      iResolution: { value: new THREE.Vector2(width, height) },
     };
 
     const material = new THREE.ShaderMaterial({
@@ -337,9 +343,9 @@ export default function ThreeScene() {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
     scene.add(mesh);
 
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
     let frameId: number;
@@ -351,10 +357,17 @@ export default function ThreeScene() {
     animate();
 
     const onResize = () => {
-      uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      const { width: w, height: h } = getSize();
+      uniforms.iResolution.value.set(w, h);
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     };
     window.addEventListener("resize", onResize);
+
+    // Also handle orientation change on mobile
+    window.addEventListener("orientationchange", () => {
+      setTimeout(onResize, 150);
+    });
 
     return () => {
       window.removeEventListener("resize", onResize);
@@ -368,5 +381,5 @@ export default function ThreeScene() {
     };
   }, []);
 
-  return <div ref={containerRef} style={{ width: "100vw", height: "100vh", overflow: "hidden" }} />;
+  return <div ref={containerRef} className="scene-container" />;
 }
