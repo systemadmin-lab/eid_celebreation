@@ -25,3 +25,116 @@ html, body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* ── Eid overlay ── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gentlePulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.eid-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+  padding: 1.5rem;
+}
+
+.eid-content {
+  text-align: center;
+  max-width: 720px;
+  animation: fadeInUp 2s ease-out both;
+}
+
+/* Arabic calligraphy header */
+.eid-arabic {
+  font-family: var(--font-aref-ruqaa), serif;
+  font-size: clamp(3rem, 10vw, 6rem);
+  font-weight: 700;
+  line-height: 1.2;
+  background: linear-gradient(
+    135deg,
+    #f5d07a 0%,
+    #fceabb 25%,
+    #d4a843 50%,
+    #fceabb 75%,
+    #f5d07a 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s linear infinite, fadeInUp 1.5s ease-out both;
+  filter: drop-shadow(0 0 20px rgba(245, 208, 122, 0.4));
+  margin-bottom: 0.5rem;
+}
+
+/* Decorative divider */
+.eid-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1rem auto;
+  max-width: 300px;
+}
+
+.eid-divider::before,
+.eid-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(212, 168, 67, 0.6),
+    transparent
+  );
+}
+
+.eid-divider-star {
+  color: #d4a843;
+  font-size: 0.9rem;
+  animation: gentlePulse 3s ease-in-out infinite;
+}
+
+/* English message */
+.eid-message {
+  font-family: var(--font-amiri), serif;
+  font-size: clamp(1rem, 3vw, 1.35rem);
+  line-height: 1.8;
+  color: rgba(252, 234, 187, 0.85);
+  max-width: 600px;
+  margin: 0 auto;
+  animation: fadeInUp 2s ease-out 0.4s both;
+  text-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
+}
+
+/* Bottom ornament */
+.eid-ornament {
+  margin-top: 1.5rem;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  color: #d4a843;
+  animation: fadeInUp 2s ease-out 0.8s both, gentlePulse 4s ease-in-out 2.8s infinite;
+  filter: drop-shadow(0 0 10px rgba(212, 168, 67, 0.5));
+}
+
